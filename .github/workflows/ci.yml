@@ -35,33 +35,33 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov ruff build boto3 twine
 
-      # 🆕 Install your package locally so pytest can import it
+      # Install your package locally so pytest can import it
       - name: Install package
         run: pip install -e .
 
-      # Run Ruff linting (allow warnings)
+      # Run Ruff linting (won’t fail build if warnings exist)
       - name: Run Ruff linter
         run: ruff check . --exit-zero
 
-      # Run pytest and generate reports
+      # Run pytest and generate coverage + XML reports
       - name: Run tests with coverage
         run: |
           pytest --cov=file_encoder --cov-report=xml:coverage.xml --junitxml=pytest-report.xml
 
-      # Upload artifacts (reports)
+      # Upload reports as unique artifacts
       - name: Upload Pytest reports
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-reports
+          name: pytest-reports-${{ github.run_id }}
           path: |
             coverage.xml
             pytest-report.xml
 
-      # Build the wheel
+      # Build the Python package
       - name: Build Python package
         run: python -m build
 
-      # Upload wheel to S3
+      # Upload built wheel to S3 (only when tagging a release)
       - name: Upload to S3
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -73,7 +73,7 @@ jobs:
           echo "Uploading wheel to S3..."
           aws s3 cp dist/*.whl s3://$AWS_S3_BUCKET/
 
-      # Upload wheel to CodeArtifact
+      # Upload wheel to CodeArtifact (only when tagging a release)
       - name: Upload to CodeArtifact
         if: startsWith(github.ref, 'refs/tags/')
         env:
