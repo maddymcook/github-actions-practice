@@ -18,11 +18,11 @@ jobs:
         python-version: ["3.12", "3.13"]
 
     steps:
-      # Checkout repo
+      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Setup Python
+      # Set up Python
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -35,7 +35,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov ruff build boto3 twine
 
-      # Install your package locally so pytest can import it
+      # Install your package so pytest can import it
       - name: Install package
         run: pip install -e .
 
@@ -48,11 +48,11 @@ jobs:
         run: |
           pytest --cov=file_encoder --cov-report=xml:coverage.xml --junitxml=pytest-report.xml
 
-      # Upload reports as unique artifacts
+      # Upload reports as unique artifacts (avoids 409 Conflict)
       - name: Upload Pytest reports
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-reports-${{ github.run_id }}
+          name: pytest-reports-${{ matrix.python-version }}-${{ github.run_id }}
           path: |
             coverage.xml
             pytest-report.xml
