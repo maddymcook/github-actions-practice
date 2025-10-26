@@ -71,7 +71,8 @@ jobs:
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
         run: |
           echo "Uploading wheel to S3..."
-          aws s3 cp dist/*.whl s3://$AWS_S3_BUCKET/
+          ls dist
+          aws s3 cp dist/ s3://$AWS_S3_BUCKET/ --recursive --region $AWS_DEFAULT_REGION
 
       # Upload wheel to CodeArtifact (only when tagging a release)
       - name: Upload to CodeArtifact
