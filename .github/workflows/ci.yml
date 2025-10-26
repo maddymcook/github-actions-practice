@@ -1,0 +1,95 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "*" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "*" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      # Checkout repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Python
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov ruff build boto3 twine
+
+      # Run Ruff linting
+      - name: Run Ruff linter
+        run: ruff check .
+
+      # Run pytest and generate reports
+      - name: Run tests with coverage
+        run: |
+          pytest --cov=file_encoder --cov-report=xml:coverage.xml --junitxml=pytest-report.xml
+
+      # Upload artifacts (reports)
+      - name: Upload Pytest reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-reports
+          path: |
+            coverage.xml
+            pytest-report.xml
+
+      # Build the wheel
+      - name: Build Python package
+        run: python -m build
+
+      # Upload wheel to S3
+      - name: Upload to S3
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+        run: |
+          echo "Uploading wheel to S3..."
+          aws s3 cp dist/*.whl s3://$AWS_S3_BUCKET/
+
+      # Upload wheel to CodeArtifact
+      - name: Upload to CodeArtifact
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          CODEARTIFACT_DOMAIN: ${{ secrets.CODEARTIFACT_DOMAIN }}
+          CODEARTIFACT_DOMAIN_OWNER: ${{ secrets.CODEARTIFACT_DOMAIN_OWNER }}
+          CODEARTIFACT_REPO: ${{ secrets.CODEARTIFACT_REPO }}
+        run: |
+          echo "Uploading wheel to CodeArtifact..."
+          TOKEN=$(aws codeartifact get-authorization-token \
+            --domain $CODEARTIFACT_DOMAIN \
+            --domain-owner $CODEARTIFACT_DOMAIN_OWNER \
+            --query authorizationToken --output text)
+          
+          REPO_URL=$(aws codeartifact get-repository-endpoint \
+            --domain $CODEARTIFACT_DOMAIN \
+            --domain-owner $CODEARTIFACT_DOMAIN_OWNER \
+            --repository $CODEARTIFACT_REPO \
+            --format pypi --query repositoryEndpoint --output text)
+
+          twine upload --repository-url $REPO_URL -u aws -p $TOKEN dist/*.whl
